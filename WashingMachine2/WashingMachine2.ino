@@ -1,3 +1,7 @@
+// Arduino washing machine controller
+//
+// By Voara Andriamihaminjaka <voara@vk.com>
+
 #include <LiquidCrystal_I2C.h>
 #include "pitches.h"
 
