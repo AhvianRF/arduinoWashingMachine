@@ -39,6 +39,8 @@ int noteDurations[] = {
 #define MOTOR_CW_HIGH 103
 #define END 0
 
+#define DELAY_BETWEEN_SEQUENCE 5000
+
 #define ZCD_PHASE_SHIFT 2200  // microseconds
 #define GATE_PULSE_LENGTH 250
 
@@ -76,7 +78,8 @@ uint16_t duration;
 uint8_t sequence;
 uint8_t programIndex = 0;
 
-uint16_t program_01[] = { DRAIN_PUMP, 10, SPRAY_WASH_MAIN, 15, DRAIN_PUMP, 8, SPRAY_WASH_PRE, 10, DRAIN_PUMP, 20, END, 0 };
+uint16_t program_01[] = { DRAIN_PUMP, 10, SPRAY_WASH_MAIN, 5, MOTOR_CCW_LOW, 8, DRAIN_PUMP, 10, SPRAY_WASH_PRE, 5, MOTOR_CW_LOW, 8, DRAIN_PUMP, 15, END, 0 };
+uint16_t program_02[] = { SPRAY_WASH_MAIN, 180, DRAIN_PUMP, 60, END, 0 };
 
 LiquidCrystal_I2C lcd(0x24, 16, 2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 
@@ -88,8 +91,20 @@ void setup() {
   attachInterrupt(0, zeroCrossInterrupt, FALLING);
 }
 
+// IRS Vector called whenever the AC voltage crosses zero
+void zeroCrossInterrupt() {
+  if (!zeroCross) {
+    zeroCross = true;  // Triggers on rising edge only and if it was reset from loop (ie. Motor running)
+// For brust control
+#ifdef BRUST_CONTROL
+    zeroCrossCount++;
+    if (zeroCrossCount > 20) zeroCrossCount = 1;
+#endif
+  }
+}
+
 void loop() {
-  sequenceHandler(program_01[programIndex], program_01[programIndex + 1]);
+  sequenceHandler(program_02[programIndex], program_02[programIndex + 1]);
 }
 
 // Calls pinMode() for each GPIO and interrupt
@@ -129,6 +144,10 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         digitalWrite(SPRAY_WASH_MAIN, LOW);
         sequenceStarted = false;
         programIndex += 2;  // Go to the next sequence on the program
+
+#ifdef DELAY_BETWEEN_SEQUENCE
+        delay(DELAY_BETWEEN_SEQUENCE);
+#endif
       }
       break;
     case SPRAY_WASH_PRE:
@@ -142,6 +161,10 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         digitalWrite(SPRAY_WASH_PRE, LOW);
         sequenceStarted = false;
         programIndex += 2;  // Go to the next sequence on the program
+
+#ifdef DELAY_BETWEEN_SEQUENCE
+        delay(DELAY_BETWEEN_SEQUENCE);
+#endif
       }
       break;
     case DRAIN_PUMP:
@@ -155,6 +178,10 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         digitalWrite(DRAIN_PUMP, LOW);
         sequenceStarted = false;
         programIndex += 2;  // Go to the next sequence on the program
+
+#ifdef DELAY_BETWEEN_SEQUENCE
+        delay(DELAY_BETWEEN_SEQUENCE);
+#endif
       }
       break;
     case MOTOR_CCW_LOW:
@@ -163,12 +190,23 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         sequenceStarted = true;
         sequenceStartTime = millis();  // Save the time the sequence started
         digitalWrite(MOTOR_DIRECTION, HIGH);
+        delay(300);  // Delay before puting relay
       }
+
+#ifdef BRUST_CONTROL
       motorZVSControl(2);
+#else
+      motorPhaseControl(157);
+#endif
+
       if ((millis() - sequenceStartTime) >= _duration * 1000) {
         digitalWrite(MOTOR_DIRECTION, LOW);
         sequenceStarted = false;
         programIndex += 2;  // Go to the next sequence on the program
+
+#ifdef DELAY_BETWEEN_SEQUENCE
+        delay(DELAY_BETWEEN_SEQUENCE);
+#endif
       }
       break;
     case MOTOR_CW_LOW:
@@ -177,11 +215,21 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         sequenceStarted = true;
         sequenceStartTime = millis();  // Save the time the sequence started
         digitalWrite(MOTOR_DIRECTION, LOW);
+        delay(300);
       }
+
+#ifdef BRUST_CONTROL
       motorZVSControl(2);
+#else
+      motorPhaseControl(157);
+#endif
       if ((millis() - sequenceStartTime) >= _duration * 1000) {
         sequenceStarted = false;
         programIndex += 2;  // Go to the next sequence on the program
+
+#ifdef DELAY_BETWEEN_SEQUENCE
+        delay(DELAY_BETWEEN_SEQUENCE);
+#endif
       }
       break;
     case MOTOR_CCW_HIGH:
@@ -191,7 +239,13 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         sequenceStartTime = millis();  // Save the time the sequence started
         digitalWrite(MOTOR_DIRECTION, HIGH);
       }
+
+#ifdef BRUST_CONTROL
       motorZVSControl(10);
+#else
+      motorPhaseControl(15);
+#endif
+
       if ((millis() - sequenceStartTime) >= _duration * 1000) {
         digitalWrite(MOTOR_DIRECTION, LOW);
         sequenceStarted = false;
@@ -205,7 +259,13 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
         sequenceStartTime = millis();  // Save the time the sequence started
         digitalWrite(MOTOR_DIRECTION, LOW);
       }
+
+#ifdef BRUST_CONTROL
       motorZVSControl(10);
+#else
+      motorPhaseControl(15);
+#endif
+
       if ((millis() - sequenceStartTime) >= _duration * 1000) {
         sequenceStarted = false;
         programIndex += 2;  // Go to the next sequence on the program
@@ -231,16 +291,7 @@ void sequenceHandler(uint8_t _sequence, uint16_t _duration) {
 ****************************  Motor control section   **************************************************
 ********************************************************************************************************/
 
-// IRS Vector called whenever the AC voltage crosses zero
-void zeroCrossInterrupt() {
-  if (!zeroCross) {
-    zeroCross = true;  // Triggers on rising edge only and if it was reset from loop (ie. Motor running)
-    zeroCrossCount++;
-    if (zeroCrossCount > 20) zeroCrossCount = 1;
-  }
-}
-
-
+#ifdef BRUST_CONTROL
 // Sends pulses to the motor Triac Gate and do zero volt switching
 // from 1 to 10 (1 slow ... 10 max speed)
 void motorZVSControl(uint8_t speed) {
@@ -253,14 +304,18 @@ void motorZVSControl(uint8_t speed) {
   }
 }
 
+#else
 // Regular TRIAC function controlling a firing angle
 void motorPhaseControl(uint8_t angle) {
+  int pulseDelay = int(angle * 10000 / 180);
   if (zeroCross) {
-    delayMicroseconds(angle * 10000 / 180);
+    delayMicroseconds(pulseDelay);
     motorSendPulse();
     zeroCross = false;
   }
 }
+#endif
+
 
 // Send a pulse to the motor speed control pin
 void motorSendPulse() {
