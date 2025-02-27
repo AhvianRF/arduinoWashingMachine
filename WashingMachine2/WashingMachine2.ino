@@ -43,6 +43,7 @@ int noteDurations[] = {
 
 #define ZCD_PHASE_SHIFT 2200  // microseconds
 #define GATE_PULSE_LENGTH 250
+#define TACHOPULSES 8      // number of pulses per revolution 
 
 /* Washing machine internally have 5 main controls
     I. Adding water
@@ -71,6 +72,9 @@ uint8_t zeroCrossCount = 0;
 bool sprayWashMain = false;
 bool sprayWashPre = false;
 bool motorDirection = CLOCKWISE;
+uint32_t lastRPMpulse;
+uint16_t RPM;                   // real rpm variable
+const uint8_t rpmCorrection = 86; // here for some reason it is necessary so that the real rpm corresponds to the measured ones
 
 bool sequenceStarted = false;
 long sequenceStartTime = 0;
@@ -88,10 +92,9 @@ void setup() {
   hardwareSetup();
   ringtone();
 
-  attachInterrupt(0, zeroCrossInterrupt, FALLING);
 }
 
-// IRS Vector called whenever the AC voltage crosses zero
+// ISR Vector called whenever the AC voltage crosses zero
 void zeroCrossInterrupt() {
   if (!zeroCross) {
     zeroCross = true;  // Triggers on rising edge only and if it was reset from loop (ie. Motor running)
@@ -103,6 +106,17 @@ void zeroCrossInterrupt() {
   }
 }
 
+// ISR Vector for tachometer on A0
+ISR(PCINT1_vect){
+  if(PINC & 0b00000001){ // digitalRead(A0)
+    unsigned long time = micros() - lastRPMpulse;
+    float time_in_sec  = ((float)time + rpmCorrection) / 1000000;
+    float prerpm = 60 / time_in_sec;
+    RPM = prerpm / TACHOPULSES;
+    lastRPMpulse = micros();
+  }
+}
+
 void loop() {
   sequenceHandler(program_02[programIndex], program_02[programIndex + 1]);
 }
@@ -110,8 +124,17 @@ void loop() {
 // Calls pinMode() for each GPIO and interrupt
 void hardwareSetup() {
   DDRD |= 0b11110000;  // (1 << MOTOR_DIRECTION) | (1 << SPRAY_WASH_MAIN) | (1 << SPRAY_WASH_PRE) | (1 << DRAIN_PUMP)
-  DDRD &= ~(1 << ZCD_OUT);
+  DDRD &= ~(1 << ZCD_OUT); // Pin 2 Input
+  DDRC &= ~1; // Pin A0 input
   DDRB |= 0b00000111;  // MOTOR_SPEED_CTRL | HEATER_CTRL | BUZZER
+
+
+  // Activate interrupt for the zeroCrossing
+  attachInterrupt(0, zeroCrossInterrupt, FALLING);
+
+  // Activate interrupt for PCINT8 (A0) for rpm counter
+  PCICR |= 1 << PCIE1;  // Group 1
+  PCMSK1 |= 1;  // Pin A0
 }
 
 void ringtone() {
