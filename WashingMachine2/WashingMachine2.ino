@@ -8,25 +8,8 @@
 #include <OneButton.h>
 #include <TimerFreeTone.h>
 #include "pitches.h"
+#include "pin_definition.h"
 
-// GPIO assignment
-// Inputs
-#define ZCD_OUT 2     // ZeroCrossDetector input for TRIAC phase control : Interrupt pin
-#define TACHO_PIN A0  // Not used, just for my reference on where it is connected
-
-// Encoder pins
-#define ENC_A 0
-#define ENC_B 1
-#define ENC_SW 3
-
-// Outputs - AND USE AS STEPS AS WELL
-#define MOTOR_DIRECTION 4   // LOW: CW | HIGH: CCW
-#define SPRAY_WASH_MAIN 5   // Active High
-#define SPRAY_WASH_PRE 6    // Active High
-#define DRAIN_PUMP 7        // Active High
-#define MOTOR_SPEED_CTRL 8  // Triac phase control
-#define HEATER_CTRL 9       // Triac ON/OFF
-#define BUZZER 10           // PWM Tone control
 
 // Utility variables
 #define CLOCKWISE LOW
